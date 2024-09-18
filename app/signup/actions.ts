@@ -3,36 +3,39 @@
 import { signIn } from '@/auth'
 import { ResultCode, getStringFromBuffer } from '@/lib/utils'
 import { z } from 'zod'
-import { kv } from '@vercel/kv'
 import { getUser } from '../login/actions'
 import { AuthError } from 'next-auth'
+
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '@/firebase';
+
 
 export async function createUser(
   email: string,
   hashedPassword: string,
   salt: string
 ) {
-  const existingUser = await getUser(email)
+  const existingUser = await getUser(email);
 
   if (existingUser) {
     return {
       type: 'error',
       resultCode: ResultCode.UserAlreadyExists
-    }
+    };
   } else {
     const user = {
       id: crypto.randomUUID(),
       email,
       password: hashedPassword,
       salt
-    }
+    };
 
-    await kv.hmset(`user:${email}`, user)
+    await setDoc(doc(db, 'users', email), user);
 
     return {
       type: 'success',
       resultCode: ResultCode.UserCreated
-    }
+    };
   }
 }
 

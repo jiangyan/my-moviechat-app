@@ -1,15 +1,16 @@
 'use server'
 
 import { signIn } from '@/auth'
-import { User } from '@/lib/types'
 import { AuthError } from 'next-auth'
 import { z } from 'zod'
-import { kv } from '@vercel/kv'
 import { ResultCode } from '@/lib/utils'
 
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/firebase';
+
 export async function getUser(email: string) {
-  const user = await kv.hgetall<User>(`user:${email}`)
-  return user
+  const userDoc = await getDoc(doc(db, 'users', email));
+  return userDoc.exists() ? userDoc.data() : null;
 }
 
 interface Result {

@@ -2,10 +2,25 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { kv } from '@vercel/kv'
+import { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, Timestamp } from 'firebase/firestore'
 
 import { auth } from '@/auth'
 import { type Chat } from '@/lib/types'
+import { db } from '@/firebase'
+
+// Helper function to convert Firestore Timestamp to ISO string
+function convertTimestampToString(timestamp: Timestamp): string {
+  return timestamp.toDate().toISOString();
+}
+
+// Modify this function to convert Timestamp objects
+function convertChat(chat: any): Chat {
+  return {
+    ...chat,
+    createdAt: chat.createdAt ? convertTimestampToString(chat.createdAt) : null,
+    // Convert other Timestamp fields if any
+  };
+}
 
 export async function getChats(userId?: string | null) {
   const session = await auth()
@@ -21,20 +36,15 @@ export async function getChats(userId?: string | null) {
   }
 
   try {
-    const pipeline = kv.pipeline()
-    const chats: string[] = await kv.zrange(`user:chat:${userId}`, 0, -1, {
-      rev: true
-    })
+    const chatsRef = collection(db, 'chats')
+    const q = query(chatsRef, where('userId', '==', userId))
+    const querySnapshot = await getDocs(q)
 
-    for (const chat of chats) {
-      pipeline.hgetall(chat)
-    }
-
-    const results = await pipeline.exec()
-
-    return results as Chat[]
+    return querySnapshot.docs.map(doc => convertChat(doc.data() as Chat))
+    
   } catch (error) {
-    return []
+    console.error('Error fetching chats:', error)
+    return { error: 'Failed to fetch chats' }
   }
 }
 
@@ -47,13 +57,14 @@ export async function getChat(id: string, userId: string) {
     }
   }
 
-  const chat = await kv.hgetall<Chat>(`chat:${id}`)
+  const chatDoc = await getDoc(doc(db, 'chats', id))
 
-  if (!chat || (userId && chat.userId !== userId)) {
+  if (!chatDoc.exists() || (userId && chatDoc.data()?.userId !== userId)) {
     return null
   }
 
-  return chat
+  const chatData = chatDoc.data() as Chat;
+  return convertChat(chatData);
 }
 
 export async function removeChat({ id, path }: { id: string; path: string }) {
@@ -65,17 +76,15 @@ export async function removeChat({ id, path }: { id: string; path: string }) {
     }
   }
 
-  // Convert uid to string for consistent comparison with session.user.id
-  const uid = String(await kv.hget(`chat:${id}`, 'userId'))
+  const chatDoc = await getDoc(doc(db, 'chats', id))
 
-  if (uid !== session?.user?.id) {
+  if (!chatDoc.exists() || chatDoc.data()?.userId !== session.user.id) {
     return {
       error: 'Unauthorized'
     }
   }
 
-  await kv.del(`chat:${id}`)
-  await kv.zrem(`user:chat:${session.user.id}`, `chat:${id}`)
+  await deleteDoc(doc(db, 'chats', id))
 
   revalidatePath('/')
   return revalidatePath(path)
@@ -90,31 +99,33 @@ export async function clearChats() {
     }
   }
 
-  const chats: string[] = await kv.zrange(`user:chat:${session.user.id}`, 0, -1)
-  if (!chats.length) {
+  const chatsRef = collection(db, 'chats')
+  const q = query(chatsRef, where('userId', '==', session.user.id))
+  const querySnapshot = await getDocs(q)
+
+  if (querySnapshot.empty) {
     return redirect('/')
   }
-  const pipeline = kv.pipeline()
 
-  for (const chat of chats) {
-    pipeline.del(chat)
-    pipeline.zrem(`user:chat:${session.user.id}`, chat)
-  }
+  const batch = db.batch()
+  querySnapshot.forEach((doc) => {
+    batch.delete(doc.ref)
+  })
 
-  await pipeline.exec()
+  await batch.commit()
 
   revalidatePath('/')
   return redirect('/')
 }
 
 export async function getSharedChat(id: string) {
-  const chat = await kv.hgetall<Chat>(`chat:${id}`)
+  const chatDoc = await getDoc(doc(db, 'chats', id))
 
-  if (!chat || !chat.sharePath) {
+  if (!chatDoc.exists() || !chatDoc.data()?.sharePath) {
     return null
   }
 
-  return chat
+  return chatDoc.data() as Chat
 }
 
 export async function shareChat(id: string) {
@@ -126,20 +137,21 @@ export async function shareChat(id: string) {
     }
   }
 
-  const chat = await kv.hgetall<Chat>(`chat:${id}`)
+  const chatDoc = await getDoc(doc(db, 'chats', id))
 
-  if (!chat || chat.userId !== session.user.id) {
+  if (!chatDoc.exists() || chatDoc.data()?.userId !== session.user.id) {
     return {
       error: 'Something went wrong'
     }
   }
 
+  const chat = chatDoc.data() as Chat
   const payload = {
     ...chat,
     sharePath: `/share/${chat.id}`
   }
 
-  await kv.hmset(`chat:${chat.id}`, payload)
+  await setDoc(doc(db, 'chats', chat.id), payload)
 
   return payload
 }
@@ -148,13 +160,7 @@ export async function saveChat(chat: Chat) {
   const session = await auth()
 
   if (session && session.user) {
-    const pipeline = kv.pipeline()
-    pipeline.hmset(`chat:${chat.id}`, chat)
-    pipeline.zadd(`user:chat:${chat.userId}`, {
-      score: Date.now(),
-      member: `chat:${chat.id}`
-    })
-    await pipeline.exec()
+    await setDoc(doc(db, 'chats', chat.id), chat)
   } else {
     return
   }

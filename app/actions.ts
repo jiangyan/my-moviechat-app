@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, Timestamp } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, Timestamp, writeBatch } from 'firebase/firestore'
 
 import { auth } from '@/auth'
 import { type Chat } from '@/lib/types'
@@ -106,8 +106,8 @@ export async function clearChats() {
   if (querySnapshot.empty) {
     return redirect('/')
   }
-
-  const batch = db.batch()
+  
+  const batch = writeBatch(db);
   querySnapshot.forEach((doc) => {
     batch.delete(doc.ref)
   })

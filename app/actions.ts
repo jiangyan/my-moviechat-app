@@ -78,7 +78,7 @@ export async function removeChat({ id, path }: { id: string; path: string }) {
 
   const chatDoc = await getDoc(doc(db, 'chats', id))
 
-  if (!chatDoc.exists() || chatDoc.data()?.userId !== session.user.id) {
+  if (!chatDoc.exists() || chatDoc.data()?.userId !== session.user?.id) {
     return {
       error: 'Unauthorized'
     }

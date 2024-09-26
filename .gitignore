@@ -34,5 +34,6 @@ yarn-error.log*
 
 .env
 .vercel
+.output
 .vscode
 .env*.local

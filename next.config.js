@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // No specific configuration needed for images
+  output: 'standalone',
 }
 
 module.exports = nextConfig

@@ -7,7 +7,7 @@
     "type-check": "tsc --noEmit",
     "format:write": "prettier --write \"{app,lib,components}/**/*.{ts,tsx,mdx}\" --cache",
     "format:check": "prettier --check \"{app,lib,components}**/*.{ts,tsx,mdx}\" --cache",
-    "pages:build": "npx @cloudflare/next-on-pages"
+    "pages:build": "pnpm dlx @cloudflare/next-on-pages"
   },
   "dependencies": {
     "@ai-sdk/openai": "^0.0.53",
